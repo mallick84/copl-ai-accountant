@@ -2,11 +2,18 @@ from playwright.sync_api import sync_playwright
 import time
 
 class GSTBot:
-    def __init__(self, headless=False):
+    def __init__(self, headless=False, message_callback=None):
         self.headless = headless
         self.browser = None
         self.page = None
         self.playwright = None
+        self.message_callback = message_callback
+
+    def log(self, message):
+        if self.message_callback:
+            self.message_callback("assistant", message)
+        else:
+            print(message)
 
     def start(self):
         self.playwright = sync_playwright().start()
@@ -19,11 +26,11 @@ class GSTBot:
             self.start()
         
         try:
-            print("Navigating to GST Portal...")
+            self.log("Navigating to GST Portal...")
             self.page.goto("https://services.gst.gov.in/services/login")
             
             # Fill Credentials
-            print("Filling credentials...")
+            self.log("Filling credentials...")
             self.page.fill("#username", username)
             self.page.fill("#user_pass", password)
             self.page.fill("#captcha", "") # Focus on captcha for user
@@ -38,7 +45,7 @@ class GSTBot:
     def wait_for_dashboard(self, timeout=300):
         """Waits for the user to finish login manually"""
         try:
-            print("Waiting for dashboard...")
+            self.log("Waiting for dashboard...")
             # Dashboard URL usually contains /dashboard
             self.page.wait_for_url("**/dashboard**", timeout=timeout*1000)
             return True
@@ -48,7 +55,7 @@ class GSTBot:
     def get_notifications(self):
         """Scrapes the 'Notices and Orders' tab"""
         try:
-            print("Navigating to Notices...")
+            self.log("Navigating to Notices...")
             # Navigate to Services -> User Services -> View Notices and Orders
             # Note: Direct URL usually works if logged in
             self.page.goto("https://services.gst.gov.in/services/auth/viewnotices")

@@ -9,86 +9,99 @@ st.set_page_config(page_title="GST Autopilot", page_icon="✈️")
 st.title("✈️ GST Autopilot Agent")
 st.markdown("Automate your portal interactions. The Agent will open a browser, type for you, and fetch data.")
 
-# Session State for Bot
-if "gst_bot" not in st.session_state:
-    st.session_state.gst_bot = None
 
-with st.expander("🔐 Portal Credentials", expanded=True):
-    username = st.text_input("GST Username")
-    password = st.text_input("GST Password", type="password")
+# Chat History
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+
+def bot_log(role, message):
+    st.session_state.chat_history.append({"role": role, "content": message})
+
+# Sidebar Controls
+with st.sidebar:
+    st.header("⚙️ Agent Controls")
+    username = st.text_input("GST Username", key="gst_username")
+    password = st.text_input("GST Password", type="password", key="gst_password")
     
     col1, col2 = st.columns(2)
     with col1:
-        start_btn = st.button("🚀 Launch Agent & Login")
+        start_btn = st.button("🚀 Launch Agent")
     with col2:
         stop_btn = st.button("🛑 Stop Agent")
 
-if start_btn:
-    if not username or not password:
-        st.error("Please enter Username and Password")
-    else:
-        status_placeholder = st.empty()
-        status_placeholder.info("Starting Browser...")
-        
-        bot = GSTBot(headless=False) # Headless=False so user can see/interact
-        st.session_state.gst_bot = bot
-        
-        msg = bot.login(username, password)
-        status_placeholder.warning(f"ACTION REQUIRED: {msg}")
-
-if stop_btn:
-    if st.session_state.gst_bot:
-        st.session_state.gst_bot.close()
-        st.session_state.gst_bot = None
-        st.success("Agent Stopped.")
-
-st.markdown("---")
-
-# Feature: Notifications
-st.subheader("🔔 Notifications & Notices")
-if st.button("Check for Notices"):
-    if not st.session_state.gst_bot:
-        st.error("Please Launch Agent & Login first!")
-    else:
-        st.info("Checking for notices... (Make sure you are logged in on the browser)")
-        
-        # Check if actually logged in
-        if st.session_state.gst_bot.wait_for_dashboard(timeout=5):
+    st.markdown("---")
+    st.subheader("Automations")
+    if st.button("Check Notices"):
+        if st.session_state.gst_bot:
+            bot_log("user", "Check for notices")
             notices = st.session_state.gst_bot.get_notifications()
             if notices:
-                count = 0
+                bot_log("assistant", f"Found {len(notices)} notices.")
+                db_count = 0 
                 for n in notices:
-                    # Avoid duplicates logic could go here, for now just add
-                    # User will acknowledge to clear
                     db.add_notification(
                         date=n.get("Date", str(datetime.date.today())),
                         type="Portal Notice",
                         description=f"{n.get('Description')} (ID: {n.get('Notice ID')})",
                         action_required=n.get("Type", "Check Portal")
                     )
-                    count += 1
-                
-                st.success(f"Success! {count} notices saved to Task Manager.")
-                st.dataframe(pd.DataFrame(notices))
+                    db_count += 1
+                bot_log("assistant", f"Saved {db_count} notices to Task Manager.")
             else:
-                st.success("No New Notices Found.")
+                bot_log("assistant", "No notices found.")
         else:
-            st.error("Agent could not detect Dashboard. Please complete Login in the browser window.")
+            st.error("Agent not running")
 
-# Feature: Auto-File
-st.markdown("---")
-st.subheader("📤 Auto-File GSTR-1")
-st.warning("⚠️ This feature is in Pilot Mode. It will navigate you to the return dashboard.")
-
-col1, col2 = st.columns(2)
-with col1:
-    fy = st.selectbox("Financial Year", ["2024-25", "2025-26"])
-with col2:
+    st.markdown("---")
+    st.write("📤 **Auto-File GSTR-1**")
+    fy = st.selectbox("FY", ["2024-25", "2025-26"])
     period = st.selectbox("Month", ["February", "March", "April"])
+    if st.button("Go to Return Dashboard"):
+        if st.session_state.gst_bot:
+            bot_log("user", f"Navigate to Returns: {period} {fy}")
+            msg = st.session_state.gst_bot.navigate_to_return_dashboard(fy, None, period)
+            bot_log("assistant", msg)
+        else:
+            st.error("Agent not running")
 
-if st.button("Go to Return Dashboard"):
-    if st.session_state.gst_bot:
-        st.session_state.gst_bot.navigate_to_return_dashboard(fy, None, period)
-        st.success("Navigated! Please Select Period -> Search -> Prepare Online.")
+# Main Chat Interface
+for message in st.session_state.chat_history:
+    with st.chat_message(message["role"]):
+        st.write(message["content"])
+
+# Handle Start/Stop
+if start_btn:
+    if not username or not password:
+        st.error("Please enter credentials in the sidebar.")
     else:
-        st.error("Please Launch Agent first.")
+        bot_log("user", "Launch Agent")
+        bot = GSTBot(headless=False, message_callback=bot_log)
+        st.session_state.gst_bot = bot
+        msg = bot.login(username, password)
+        bot_log("assistant", msg)
+        st.rerun()
+
+if stop_btn:
+    if st.session_state.gst_bot:
+        bot_log("user", "Stop Agent")
+        st.session_state.gst_bot.close()
+        st.session_state.gst_bot = None
+        bot_log("assistant", "Agent stopped.")
+        st.rerun()
+
+# User Input (Chat)
+if prompt := st.chat_input("Type a message or instruction for the Agent..."):
+    st.session_state.chat_history.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.write(prompt)
+    
+    # Simple response logic for now
+    if st.session_state.gst_bot:
+        with st.chat_message("assistant"):
+            response = "I heard you. Currently, I only respond to sidebar commands, but I'm listening!"
+            st.write(response)
+            st.session_state.chat_history.append({"role": "assistant", "content": response})
+    else:
+        with st.chat_message("assistant"):
+            st.write("Please launch the agent first from the sidebar.")
+
