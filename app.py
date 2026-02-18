@@ -4,6 +4,28 @@ import database as db
 
 st.set_page_config(page_title="AI-Accountant", page_icon="📊", layout="wide")
 
+if 'authentication_status' not in st.session_state:
+    st.session_state['authentication_status'] = False
+
+def check_login():
+    if st.session_state['username'] == "COPL2026" and st.session_state['password'] == "COPL@2026":
+        st.session_state['authentication_status'] = True
+    else:
+        st.session_state['authentication_status'] = False
+        st.error("😕 Incorrect Username or Password")
+
+if not st.session_state['authentication_status']:
+    st.title("🔐 Login to AI-Accountant")
+    st.text_input("Username", key="username")
+    st.text_input("Password", type="password", key="password")
+    st.button("Login", on_click=check_login)
+    st.stop()
+
+st.sidebar.title("Navigation")
+if st.button("Logout"):
+    st.session_state['authentication_status'] = False
+    st.rerun()
+
 st.title("📊 AI-Accountant for Startups")
 
 # Fetch data
